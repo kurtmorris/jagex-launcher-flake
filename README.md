@@ -1,8 +1,8 @@
 # jagex-launcher
 
 Nix flake packaging the official [Jagex Launcher](https://www.runescape.com/launcher) (for
-RuneScape and Old School RuneScape) as an AppImage, wired up to launch RuneLite instead of the
-stock Java client.
+RuneScape and Old School RuneScape) as an AppImage, wired up to launch nixpkgs `pkgs.runelite` or `pkgs.hdos` instead of the
+AppImage packaged RuneLite client.
 
 ## Usage
 
@@ -33,25 +33,6 @@ Add this repo as an input in your system flake:
   outputs = { self, nixpkgs, jagex-launcher, ... }: {
     nixosConfigurations.yourhost = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
-      modules = [ ./configuration.nix ];
-    };
-  };
-}
-```
-
-`inputs.nixpkgs.follows = "nixpkgs";` makes this flake build against your system's own nixpkgs
-instead of the revision pinned in this repo's `flake.lock`, so the package tracks whatever
-nixpkgs you're already on and updates whenever you run `nix flake update`.
-
-Then import the `nixosModules.default` module in your system's module list. It applies the
-overlay for you, so `pkgs.jagex-launcher` / `pkgs.jagex-launcher-hdos` are available anywhere
-`pkgs` is in scope with no extra `nixpkgs.overlays` line needed:
-
-```nix
-{
-  outputs = { self, nixpkgs, jagex-launcher, ... }: {
-    nixosConfigurations.yourhost = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
       modules = [
         jagex-launcher.nixosModules.default
         ./configuration.nix
@@ -68,6 +49,15 @@ overlay for you, so `pkgs.jagex-launcher` / `pkgs.jagex-launcher-hdos` are avail
   environment.systemPackages = [ pkgs.jagex-launcher ];
 }
 ```
+OR
+```nix
+# configuration.nix
+{ pkgs, ... }:
+{
+  environment.systemPackages = [ pkgs.jagex-launcher-hdos ];
+}
+```
+
 
 If you'd rather not pull in the overlay (e.g. to avoid touching `pkgs` globally), reference the
 package directly instead of importing the module:
