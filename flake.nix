@@ -16,6 +16,10 @@
     {
       packages.${system} = {
         jagex-launcher = pkgs.callPackage ./jagex-launcher.nix { };
+        jagex-launcher-hdos = pkgs.callPackage ./jagex-launcher.nix {
+          clientPkg = pkgs.hdos;
+          pname = "jagex-launcher-hdos";
+        };
         default = self.packages.${system}.jagex-launcher;
       };
 
@@ -26,6 +30,14 @@
 
       overlays.default = final: prev: {
         jagex-launcher = final.callPackage ./jagex-launcher.nix { };
+        jagex-launcher-hdos = final.callPackage ./jagex-launcher.nix {
+          clientPkg = final.hdos;
+          pname = "jagex-launcher-hdos";
+        };
+      };
+
+      nixosModules.default = { ... }: {
+        nixpkgs.overlays = [ self.overlays.default ];
       };
     };
 }
