@@ -17,10 +17,8 @@ let
     gcc -shared -fPIC -O2 ${./shim.c} -o $out -ldl
   '';
 
-  # Pinned using web archive to avoid breaking changes
-  # https://rs-launcher-updates.runescape.com/production/linux/x64/latest/jagex-launcher-beta-linux-x86_64.AppImage
   src = fetchurl {
-    url = "https://web.archive.org/web/20260730021847/https://rs-launcher-updates.runescape.com/production/linux/x64/latest/jagex-launcher-beta-linux-x86_64.AppImage";
+    url = "https://rs-launcher-updates.runescape.com/production/linux/x64/releases/${version}/jagex-launcher-beta-linux-x86_64.AppImage";
     hash = "sha256-VUWfxwvnVTjfsA8lXYGBG6SYKQDbzhZQqrgApiz7lIE=";
   };
 
