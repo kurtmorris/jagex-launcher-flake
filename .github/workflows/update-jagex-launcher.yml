@@ -1,0 +1,116 @@
+name: Update Jagex Launcher
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-jagex-launcher
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Fetch Latest AppImage & Resolve Version
+        id: fetch-latest
+        run: |
+          LATEST_URL="https://rs-launcher-updates.runescape.com/production/linux/x64/latest/jagex-launcher-beta-linux-x86_64.AppImage"
+
+          echo "Downloading latest AppImage..."
+          curl -fsSL "$LATEST_URL" -o launcher.AppImage
+
+          # Calculate SRI hash for modern Nix fetchurl
+          NEW_SRI_HASH=$(nix hash convert --hash-algo sha256 $(nix-prefetch-url --type sha256 "file://$PWD/launcher.AppImage"))
+          CURRENT_HASH=$(grep -oP 'hash = "\K[^"]+' jagex-launcher.nix || true)
+
+          echo "Latest SRI Hash: $NEW_SRI_HASH"
+          echo "Current Hash:    $CURRENT_HASH"
+
+          if [ "$NEW_SRI_HASH" = "$CURRENT_HASH" ]; then
+            echo "Hash unchanged. jagex-launcher.nix is up to date."
+            echo "updated=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Hash mismatch detected! Resolving upstream release version..."
+
+          # 1. Try extracting version from embedded AppImage metadata
+          EXTRACTED_VER=$(grep -a -oP 'X-AppImage-Version=\K[0-9.]+' launcher.AppImage | head -n1 || true)
+
+          # 2. Parse current version to generate semver fallback guesses
+          CURR_VER=$(grep -oP 'version = "\K[^"]+' jagex-launcher.nix || echo "0.1.1")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURR_VER"
+
+          # Build list of candidate versions to check.
+          # Upstream doesn't expose a version list or embed metadata in this
+          # AppImage, so we brute-force nearby semver bumps. Missed guesses are
+          # cheap (S3 403s almost instantly on unknown keys) and the probe loop
+          # below breaks on first match, so a wide range only costs time when
+          # several releases were skipped between runs.
+          CANDIDATES=()
+          [ -n "$EXTRACTED_VER" ] && CANDIDATES+=("$EXTRACTED_VER")
+          for i in $(seq 1 20); do
+            CANDIDATES+=("$MAJOR.$MINOR.$((PATCH+i))")
+          done
+          for i in $(seq 0 5); do
+            CANDIDATES+=("$MAJOR.$((MINOR+1)).$i")
+          done
+          CANDIDATES+=("$((MAJOR+1)).0.0")
+
+          MATCHED_VERSION=""
+
+          # 3. Probe release URLs to find the matching version endpoint
+          for VER in "${CANDIDATES[@]}"; do
+            PROBE_URL="https://rs-launcher-updates.runescape.com/production/linux/x64/releases/${VER}/jagex-launcher-beta-linux-x86_64.AppImage"
+            echo "Probing $PROBE_URL ..."
+
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PROBE_URL")
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              # Verify the release URL payload matches the /latest/ hash
+              PROBE_HASH=$(nix hash convert --hash-algo sha256 $(nix-prefetch-url --type sha256 "$PROBE_URL"))
+              if [ "$PROBE_HASH" = "$NEW_SRI_HASH" ]; then
+                MATCHED_VERSION="$VER"
+                echo "Successfully matched version: $MATCHED_VERSION"
+                break
+              fi
+            fi
+          done
+
+          if [ -z "$MATCHED_VERSION" ]; then
+            echo "Error: Could not verify a valid version URL under /releases/"
+            exit 1
+          fi
+
+          echo "new_hash=$NEW_SRI_HASH" >> $GITHUB_OUTPUT
+          echo "new_version=$MATCHED_VERSION" >> $GITHUB_OUTPUT
+          echo "updated=true" >> $GITHUB_OUTPUT
+
+      - name: Update jagex-launcher.nix
+        if: steps.fetch-latest.outputs.updated == 'true'
+        run: |
+          sed -i "s/version = \"[^\"]*\"/version = \"${{ steps.fetch-latest.outputs.new_version }}\"/" jagex-launcher.nix
+          sed -i "s|hash = \"[^\"]*\"|hash = \"${{ steps.fetch-latest.outputs.new_hash }}\"|" jagex-launcher.nix
+
+      - name: Commit and push
+        if: steps.fetch-latest.outputs.updated == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add jagex-launcher.nix
+          git commit -m "Update jagex-launcher to ${{ steps.fetch-latest.outputs.new_version }}"
+          git push
