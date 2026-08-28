@@ -10,7 +10,7 @@
 }:
 
 let
-  version = "0.1.5";
+  version = "0.1.6";
   clientBinary = "${clientPkg}/bin/${clientPkg.meta.mainProgram or clientPkg.pname or clientPkg.name}";
 
   execRedirectShim = runCommand "exec-redirect-shim.so" { buildInputs = [ gcc ]; } ''
@@ -19,7 +19,7 @@ let
 
   src = fetchurl {
     url = "https://rs-launcher-updates.runescape.com/production/linux/x64/releases/${version}/jagex-launcher-beta-linux-x86_64.AppImage";
-    hash = "sha256-9+pwtK/c1vK8gPb/DPIqjK9dNoVDahMWR4hkkUvfhJs=";
+    hash = "sha256-JOSt564lBOSitSBnV307s2D8McMlzvOVz2Q8jVy91F8=";
   };
 
   appimageContents = appimageTools.extract {
