@@ -36,8 +36,38 @@
         };
       };
 
-      nixosModules.default = { ... }: {
-        nixpkgs.overlays = [ self.overlays.default ];
-      };
+      nixosModules.default = { config, lib, pkgs, ... }:
+        let
+          cfg = config.programs.jagex-launcher;
+        in
+        {
+          options.programs.jagex-launcher = {
+            enable = lib.mkEnableOption "the Jagex Launcher";
+
+            client = lib.mkOption {
+              type = lib.types.package;
+              default = pkgs.runelite;
+              defaultText = lib.literalExpression "pkgs.runelite";
+              example = lib.literalExpression "pkgs.hdos";
+              description = ''
+                Client package the launcher starts in place of its bundled RuneLite AppImage.
+                Its `meta.mainProgram` is the binary that gets executed.
+              '';
+            };
+
+            package = lib.mkOption {
+              type = lib.types.package;
+              readOnly = true;
+              default = pkgs.jagex-launcher.override { clientPkg = cfg.client; };
+              defaultText = lib.literalExpression "pkgs.jagex-launcher.override { clientPkg = cfg.client; }";
+              description = "The resulting launcher package, wired up to `client`.";
+            };
+          };
+
+          config = lib.mkMerge [
+            { nixpkgs.overlays = [ self.overlays.default ]; }
+            (lib.mkIf cfg.enable { environment.systemPackages = [ cfg.package ]; })
+          ];
+        };
     };
 }
